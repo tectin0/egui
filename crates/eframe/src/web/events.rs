@@ -132,11 +132,7 @@ fn install_keydown(runner_ref: &WebRunner, target: &EventTarget) -> Result<(), J
             }
 
             let modifiers = modifiers_from_kb_event(&event);
-            if !modifiers.ctrl
-                && !modifiers.command
-                // When text agent is focused, it is responsible for handling input events
-                && !runner.text_agent.has_focus()
-            {
+            if !runner.text_agent.has_focus() {
                 if let Some(text) = text_from_keyboard_event(&event) {
                     let egui_event = egui::Event::Text(text);
                     let should_propagate = (runner.web_options.should_propagate_event)(&egui_event);
