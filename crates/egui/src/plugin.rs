@@ -3,6 +3,11 @@ use ahash::HashMap;
 use epaint::mutex::{Mutex, MutexGuard};
 use std::sync::Arc;
 
+#[cfg(debug_assertions)]
+thread_local! {
+    static IN_FOR_EACH_DYN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// A plugin to extend egui.
 ///
 /// Add plugins via [`Context::add_plugin`].
@@ -147,11 +152,15 @@ impl PluginsOrdered {
     where
         F: FnMut(&mut dyn Plugin),
     {
+        #[cfg(debug_assertions)]
+        let was_inside = IN_FOR_EACH_DYN.with(|f| f.replace(true));
         for plugin in &self.0 {
             let mut plugin = plugin.lock();
             profiling::scope!("plugin", plugin.dyn_plugin_mut().debug_name());
             f(plugin.dyn_plugin_mut());
         }
+        #[cfg(debug_assertions)]
+        IN_FOR_EACH_DYN.with(|f| f.set(was_inside));
     }
 
     pub fn on_begin_pass(&self, ui: &mut Ui) {
@@ -184,6 +193,9 @@ impl PluginsOrdered {
 
     #[cfg(debug_assertions)]
     pub fn on_widget_under_pointer(&self, ctx: &Context, widget: &crate::WidgetRect) {
+        if IN_FOR_EACH_DYN.with(|f| f.get()) {
+            return;
+        }
         profiling::scope!("plugins", "on_widget_under_pointer");
         self.for_each_dyn(|plugin| {
             plugin.on_widget_under_pointer(ctx, widget);
