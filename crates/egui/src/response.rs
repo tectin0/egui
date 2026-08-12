@@ -816,6 +816,7 @@ impl Response {
                 enabled: self.enabled(),
                 changed: false,
                 child_changed: false,
+                stable_id: None,
             },
             true,
             Default::default(),

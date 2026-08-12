@@ -458,6 +458,7 @@ mod tests {
             enabled: true,
             changed: false,
             child_changed: false,
+            stable_id: None,
         }
     }
 

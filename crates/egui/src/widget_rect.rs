@@ -57,6 +57,13 @@ pub struct WidgetRect {
     /// Propagated upward through the parent chain when a descendant calls
     /// [`Response::mark_changed`](crate::Response::mark_changed).
     pub child_changed: bool,
+
+    /// The stable [`Id`] of this widget, if it is a [`Ui`](crate::Ui).
+    ///
+    /// For non-Ui widgets this is `None`. For Uis, this is `Ui::id()` — the stable id
+    /// that children see as their `parent_id`. This differs from `WidgetRect::id`
+    /// (which is `Ui::unique_id()`) for child Uis.
+    pub stable_id: Option<Id>,
 }
 
 impl WidgetRect {
@@ -71,6 +78,7 @@ impl WidgetRect {
             enabled,
             changed,
             child_changed,
+            stable_id,
         } = self;
         Self {
             id,
@@ -82,6 +90,7 @@ impl WidgetRect {
             enabled,
             changed,
             child_changed,
+            stable_id,
         }
     }
 }
@@ -112,6 +121,9 @@ pub struct WidgetRects {
 
     /// All widgets, by id, and their order in their respective layer
     by_id: IdMap<(usize, WidgetRect)>,
+
+    /// Maps a Ui's stable id to its unique id, for Uis where they differ.
+    stable_to_id: IdMap<Id>,
 
     /// Info about some widgets.
     ///
@@ -164,6 +176,7 @@ impl WidgetRects {
         let Self {
             by_layer,
             by_id,
+            stable_to_id,
             infos,
         } = self;
 
@@ -173,6 +186,7 @@ impl WidgetRects {
         }
 
         by_id.clear();
+        stable_to_id.clear();
 
         infos.clear();
     }
@@ -182,6 +196,7 @@ impl WidgetRects {
         let Self {
             by_layer,
             by_id,
+            stable_to_id,
             infos: _,
         } = self;
 
@@ -195,6 +210,9 @@ impl WidgetRects {
             std::collections::hash_map::Entry::Vacant(entry) => {
                 // A new widget
                 let idx_in_layer = layer_widgets.len();
+                if let Some(s) = widget_rect.stable_id {
+                    stable_to_id.insert(s, widget_rect.id);
+                }
                 entry.insert((idx_in_layer, widget_rect));
                 layer_widgets.push(widget_rect);
             }
@@ -258,14 +276,19 @@ impl WidgetRects {
             None => return,
         };
 
-        // Walk up the parent chain, setting child_changed on each ancestor
+        // Walk up the parent chain, setting child_changed on each ancestor.
+        // `parent_id` stores the parent's stable id; `stable_to_id` maps that to `unique_id`
+        // so we can look up the parent's WidgetRect in `by_id`.
         let mut current = parent_id;
-        while let Some((_, wr)) = self.by_id.get_mut(&current) {
-            if wr.child_changed {
-                break; // already propagated from another descendant
+
+        while let Some(unique_id) = self.stable_to_id.get(&current).copied() {
+            match self.by_id.get_mut(&unique_id) {
+                Some((_, wr)) if !wr.child_changed => {
+                    wr.child_changed = true;
+                    current = wr.parent_id;
+                }
+                _ => break,
             }
-            wr.child_changed = true;
-            current = wr.parent_id;
         }
     }
 

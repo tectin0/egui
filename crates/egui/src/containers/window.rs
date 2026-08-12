@@ -1062,6 +1062,7 @@ fn do_resize_interaction(
                 enabled: true,
                 changed: false,
                 child_changed: false,
+                stable_id: None,
             },
             true,
             InteractOptions {

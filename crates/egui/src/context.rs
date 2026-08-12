@@ -1383,6 +1383,7 @@ impl Context {
             enabled,
             changed: _,
             child_changed: _,
+            stable_id: _,
         } = widget_rect;
 
         // previous pass + "highlight next pass" == "highlight this pass"
