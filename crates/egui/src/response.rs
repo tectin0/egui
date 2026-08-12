@@ -594,6 +594,25 @@ impl Response {
         self.flags.contains(Flags::CHANGED)
     }
 
+    /// Returns `true` if any descendant widget of this widget's parent [`Ui`](crate::Ui)
+    /// had its data changed this frame.
+    ///
+    /// This checks [`WidgetRect::child_changed`](crate::WidgetRect::child_changed), which is
+    /// propagated upward through the parent chain when a descendant calls
+    /// [`Self::mark_changed`].
+    ///
+    /// For a [`Ui`](crate::Ui)'s response, this is `true` if any widget inside it changed.
+    pub fn child_changed(&self) -> bool {
+        self.ctx.viewport(|viewport| {
+            viewport
+                .this_pass
+                .widgets
+                .get(self.id)
+                .or_else(|| viewport.prev_pass.widgets.get(self.id))
+                .is_some_and(|w| w.child_changed)
+        })
+    }
+
     /// Report the data shown by this widget changed.
     ///
     /// This must be called by widgets that represent some mutable data,
@@ -604,6 +623,7 @@ impl Response {
     #[inline(always)]
     pub fn mark_changed(&mut self) {
         self.flags.set(Flags::CHANGED, true);
+        self.ctx.mark_widget_changed(self.id);
     }
 
     /// Should the container be closed?
@@ -794,6 +814,8 @@ impl Response {
                 interact_rect: self.interact_rect,
                 sense: self.sense | sense,
                 enabled: self.enabled(),
+                changed: false,
+                child_changed: false,
             },
             true,
             Default::default(),

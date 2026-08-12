@@ -1060,6 +1060,8 @@ fn do_resize_interaction(
                 interact_rect: rect,
                 sense: Sense::DRAG, // Don't use Sense::drag() since we don't want these to be focusable
                 enabled: true,
+                changed: false,
+                child_changed: false,
             },
             true,
             InteractOptions {
