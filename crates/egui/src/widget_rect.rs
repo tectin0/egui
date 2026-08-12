@@ -297,8 +297,9 @@ impl WidgetRects {
     /// This is an O(1) check — the [`WidgetRect::child_changed`] flag is propagated upward
     /// when [`WidgetRect::changed`] is set via [`Response::mark_changed`](crate::Response::mark_changed).
     pub fn any_child_changed(&self, parent_id: Id) -> bool {
-        self.by_id
+        self.stable_to_id
             .get(&parent_id)
+            .and_then(|uid| self.by_id.get(uid))
             .is_some_and(|(_, wr)| wr.child_changed)
     }
 }

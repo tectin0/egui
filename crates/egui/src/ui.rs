@@ -179,7 +179,7 @@ impl Ui {
                 enabled: ui.enabled,
                 changed: false,
                 child_changed: false,
-                stable_id: None,
+                stable_id: Some(ui.id),
             },
             true,
             Default::default(),
