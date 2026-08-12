@@ -46,6 +46,17 @@ pub struct WidgetRect {
 
     /// Is the widget enabled?
     pub enabled: bool,
+
+    /// Was the widget's data changed this frame?
+    ///
+    /// Set by [`Response::mark_changed`](crate::Response::mark_changed).
+    pub changed: bool,
+
+    /// Was any descendant widget's data changed this frame?
+    ///
+    /// Propagated upward through the parent chain when a descendant calls
+    /// [`Response::mark_changed`](crate::Response::mark_changed).
+    pub child_changed: bool,
 }
 
 impl WidgetRect {
@@ -58,6 +69,8 @@ impl WidgetRect {
             interact_rect,
             sense,
             enabled,
+            changed,
+            child_changed,
         } = self;
         Self {
             id,
@@ -67,6 +80,8 @@ impl WidgetRect {
             interact_rect: transform * interact_rect,
             sense,
             enabled,
+            changed,
+            child_changed,
         }
     }
 }
@@ -229,5 +244,38 @@ impl WidgetRects {
 
     pub fn info(&self, id: Id) -> Option<&WidgetInfo> {
         self.infos.get(&id)
+    }
+
+    /// Mark a widget as changed by its [`Id`], and propagate
+    /// [`WidgetRect::child_changed`] up the parent chain.
+    pub fn mark_changed(&mut self, id: Id) {
+        // Set changed on the widget itself
+        let parent_id = match self.by_id.get_mut(&id) {
+            Some((_, wr)) => {
+                wr.changed = true;
+                wr.parent_id
+            }
+            None => return,
+        };
+
+        // Walk up the parent chain, setting child_changed on each ancestor
+        let mut current = parent_id;
+        while let Some((_, wr)) = self.by_id.get_mut(&current) {
+            if wr.child_changed {
+                break; // already propagated from another descendant
+            }
+            wr.child_changed = true;
+            current = wr.parent_id;
+        }
+    }
+
+    /// Returns `true` if any descendant widget of `parent_id` has its data changed this frame.
+    ///
+    /// This is an O(1) check — the [`WidgetRect::child_changed`] flag is propagated upward
+    /// when [`WidgetRect::changed`] is set via [`Response::mark_changed`](crate::Response::mark_changed).
+    pub fn any_child_changed(&self, parent_id: Id) -> bool {
+        self.by_id
+            .get(&parent_id)
+            .is_some_and(|(_, wr)| wr.child_changed)
     }
 }

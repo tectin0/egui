@@ -1342,6 +1342,22 @@ impl Context {
         res
     }
 
+    /// Mark a widget's [`WidgetRect::changed`] flag.
+    ///
+    /// Called by [`Response::mark_changed`](crate::Response::mark_changed).
+    pub(crate) fn mark_widget_changed(&self, id: Id) {
+        self.write(|ctx| {
+            let viewport = ctx.viewport();
+            viewport.this_pass.widgets.mark_changed(id);
+        });
+    }
+
+    /// Returns `true` if any descendant widget of `parent_id` has its
+    /// [`WidgetRect::changed`](crate::WidgetRect::changed) flag set this frame.
+    pub fn any_child_changed(&self, parent_id: Id) -> bool {
+        self.viewport(|viewport| viewport.this_pass.widgets.any_child_changed(parent_id))
+    }
+
     /// Read the response of some widget, which may be called _before_ creating the widget (!).
     ///
     /// This is because widget interaction happens at the start of the pass, using the widget rects from the previous pass.
@@ -1430,6 +1446,8 @@ impl Context {
             interact_rect,
             sense,
             enabled,
+            changed: _,
+            child_changed: _,
         } = widget_rect;
 
         // previous pass + "highlight next pass" == "highlight this pass"
