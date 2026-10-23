@@ -457,6 +457,8 @@ mod tests {
             sense,
             enabled: true,
             visible: true,
+            changed: false,
+            child_changed: false,
         }
     }
 

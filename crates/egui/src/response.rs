@@ -670,6 +670,22 @@ impl Response {
         self.flags.contains(Flags::CHANGED)
     }
 
+    /// Was the data of any widget inside this one changed (see [`Self::changed`])?
+    ///
+    /// For the response of a [`Ui`](crate::Ui) (e.g. [`Ui::response`](crate::Ui::response)), this
+    /// is `true` if any widget anywhere inside it called [`Self::mark_changed`] this pass, or the
+    /// last pass if this pass hasn't registered the widget yet.
+    pub fn child_changed(&self) -> bool {
+        self.ctx.viewport(|viewport| {
+            viewport
+                .this_pass
+                .widgets
+                .get(self.id)
+                .or_else(|| viewport.prev_pass.widgets.get(self.id))
+                .is_some_and(|widget| widget.child_changed)
+        })
+    }
+
     /// Report the data shown by this widget changed.
     ///
     /// This must be called by widgets that represent some mutable data,
@@ -680,6 +696,7 @@ impl Response {
     #[inline(always)]
     pub fn mark_changed(&mut self) {
         self.flags.set(Flags::CHANGED, true);
+        self.ctx.mark_widget_changed(self.id);
     }
 
     /// Should the container be closed?
@@ -896,6 +913,8 @@ impl Response {
                 sense: self.sense | sense,
                 enabled: self.enabled(),
                 visible: self.flags.contains(Flags::VISIBLE),
+                changed: false,
+                child_changed: false,
             },
             true,
             Default::default(),

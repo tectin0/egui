@@ -1634,6 +1634,11 @@ impl Context {
         let _ = (self, rect);
     }
 
+    /// Marks the widget `id` and its ancestors as changed (see [`WidgetRect::child_changed`]).
+    pub(crate) fn mark_widget_changed(&self, id: Id) {
+        self.write(|ctx| ctx.viewport().this_pass.widgets.mark_changed(id));
+    }
+
     /// Read the response of some widget, which may be called _before_ creating the widget (!).
     ///
     /// This is because widget interaction happens at the start of the pass, using the widget rects from the previous pass.
@@ -1723,6 +1728,8 @@ impl Context {
             sense,
             enabled,
             visible,
+            changed: _,
+            child_changed: _,
         } = widget_rect;
 
         // previous pass + "highlight next pass" == "highlight this pass"
@@ -5042,6 +5049,8 @@ mod test {
             sense: Sense::hover(),
             enabled: true,
             visible: true,
+            changed: false,
+            child_changed: false,
         };
 
         let mut previous = WidgetRects::default();
@@ -5091,6 +5100,8 @@ mod test {
             sense: Sense::click(),
             enabled: true,
             visible: true,
+            changed: false,
+            child_changed: false,
         };
 
         let mut previous = WidgetRects::default();
@@ -5132,6 +5143,8 @@ mod test {
             sense: Sense::hover(),
             enabled: true,
             visible: true,
+            changed: false,
+            child_changed: false,
         };
 
         let mut previous = WidgetRects::default();

@@ -54,6 +54,17 @@ pub struct WidgetRect {
     ///
     /// Invisible widgets (see [`crate::Ui::is_visible`]) are not exposed to accessibility.
     pub visible: bool,
+
+    /// Was the widget's data changed this frame?
+    ///
+    /// Set by [`Response::mark_changed`](crate::Response::mark_changed).
+    pub changed: bool,
+
+    /// Was the data of any widget inside this one changed this frame?
+    ///
+    /// Set on every ancestor (through [`Self::parent_id`]) of a widget whose
+    /// [`Response::mark_changed`](crate::Response::mark_changed) is called.
+    pub child_changed: bool,
 }
 
 impl WidgetRect {
@@ -67,6 +78,8 @@ impl WidgetRect {
             sense,
             enabled,
             visible,
+            changed,
+            child_changed,
         } = self;
         Self {
             id,
@@ -77,6 +90,8 @@ impl WidgetRect {
             sense,
             enabled,
             visible,
+            changed,
+            child_changed,
         }
     }
 }
@@ -250,5 +265,73 @@ impl WidgetRects {
 
     pub fn info(&self, id: Id) -> Option<&WidgetInfo> {
         self.infos.get(&id)
+    }
+
+    /// Marks the widget `id` as changed and sets [`WidgetRect::child_changed`] on its ancestors.
+    ///
+    /// The walk stops at the first ancestor that already has it set (its own ancestors have it
+    /// too) and at the root [`crate::Ui`], whose `parent_id` is its own id.
+    pub fn mark_changed(&mut self, id: Id) {
+        let Some((_, widget)) = self.by_id.get_mut(&id) else {
+            return;
+        };
+
+        widget.changed = true;
+        let mut ancestor = widget.parent_id;
+
+        while let Some((_, widget)) = self.by_id.get_mut(&ancestor) {
+            if widget.child_changed {
+                break;
+            }
+
+            widget.child_changed = true;
+            ancestor = widget.parent_id;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Context, FontDefinitions, Sense};
+
+    #[test]
+    fn a_changed_widget_marks_every_enclosing_ui_and_nothing_else() {
+        let ctx = Context::default();
+        ctx.set_fonts(FontDefinitions::empty());
+
+        let mut outer = None;
+        let mut inner = None;
+        let mut sibling = None;
+        let mut unchanged_widget = None;
+
+        let output = ctx.run_ui(Default::default(), |ui| {
+            outer = Some(
+                ui.scope(|ui| {
+                    inner = Some(
+                        ui.scope(|ui| {
+                            let mut changed =
+                                ui.allocate_response(ui.available_size(), Sense::click());
+                            changed.mark_changed();
+                        })
+                        .response,
+                    );
+                })
+                .response,
+            );
+
+            sibling = Some(
+                ui.scope(|ui| {
+                    unchanged_widget =
+                        Some(ui.allocate_response(ui.available_size(), Sense::click()));
+                })
+                .response,
+            );
+        });
+        output.drop_without_applying_deltas();
+
+        assert!(inner.unwrap().child_changed());
+        assert!(outer.unwrap().child_changed());
+        assert!(!sibling.unwrap().child_changed());
+        assert!(!unchanged_widget.unwrap().child_changed());
     }
 }

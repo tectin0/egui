@@ -581,6 +581,8 @@ impl Area {
                     sense,
                     enabled,
                     visible: !sizing_pass,
+                    changed: false,
+                    child_changed: false,
                 },
                 true,
                 Default::default(),
