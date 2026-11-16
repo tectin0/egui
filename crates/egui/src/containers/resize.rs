@@ -300,6 +300,9 @@ impl Resize {
             .max
             .max(inner_rect.min + state.last_content_size);
 
+        // The parent's bounds stay open in the directions an enclosing scroll area scrolls:
+        let overflow_bounds = ui.overflow_bounds().intersect(content_clip_rect);
+
         content_clip_rect = content_clip_rect.intersect(ui.clip_rect()); // Respect parent region
 
         let mut ui_builder = UiBuilder::new()
@@ -310,6 +313,7 @@ impl Resize {
         }
         let mut content_ui = ui.new_child(ui_builder);
         content_ui.set_clip_rect(content_clip_rect);
+        content_ui.set_overflow_bounds(overflow_bounds);
 
         Prepared {
             id,

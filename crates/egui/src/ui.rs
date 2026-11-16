@@ -45,6 +45,9 @@ pub struct Ui {
     /// Specifies paint layer, clip rectangle and a reference to [`Context`].
     painter: Painter,
 
+    /// See [`Self::overflow_bounds`].
+    overflow_bounds: Rect,
+
     /// The [`Style`] (visuals, spacing, etc) of this ui.
     /// Commonly many [`Ui`]s share the same [`Style`].
     /// The [`Ui`] implements copy-on-write for this.
@@ -145,6 +148,7 @@ impl Ui {
             unique_id,
             next_auto_id_salt: unique_id.with("auto").value(),
             painter: Painter::new(ctx, layer_id, clip_rect),
+            overflow_bounds: clip_rect,
             style,
             placer,
             enabled: true,
@@ -283,6 +287,7 @@ impl Ui {
             unique_id,
             next_auto_id_salt,
             painter,
+            overflow_bounds: self.overflow_bounds,
             style,
             placer,
             enabled,
@@ -676,18 +681,47 @@ impl Ui {
     /// Short for `ui.set_clip_rect(ui.clip_rect().intersect(new_clip_rect))`.
     ///
     /// See also: [`Self::clip_rect`] and [`Self::set_clip_rect`].
+    ///
+    /// Also shrinks [`Self::overflow_bounds`] to `new_clip_rect`.
     #[inline]
     pub fn shrink_clip_rect(&mut self, new_clip_rect: Rect) {
         self.painter.shrink_clip_rect(new_clip_rect);
+        self.overflow_bounds = self.overflow_bounds.intersect(new_clip_rect);
     }
 
     /// Screen-space rectangle for clipping what we paint in this ui.
     /// This is used, for instance, to avoid painting outside a window that is smaller than its contents.
     ///
+    /// Also sets [`Self::overflow_bounds`] to `clip_rect`; a container that clips on purpose
+    /// sets them afterwards with [`Self::set_overflow_bounds`].
+    ///
     /// Warning: growing the clip rect might cause unexpected results!
     /// When in doubt, use [`Self::shrink_clip_rect`] instead.
     pub fn set_clip_rect(&mut self, clip_rect: Rect) {
         self.painter.set_clip_rect(clip_rect);
+        self.overflow_bounds = clip_rect;
+    }
+
+    /// Where widgets of this ui can be without being cut off by accident.
+    ///
+    /// This is the [`Self::clip_rect`], opened where containers clip on purpose: a
+    /// [`crate::ScrollArea`] opens it in the directions it scrolls, a
+    /// [`crate::CollapsingHeader`] keeps its parent's while it animates, a [`crate::Scene`]
+    /// opens it fully. [`crate::style::DebugOptions::show_clipped`] outlines widgets that reach
+    /// outside it.
+    ///
+    /// A child ui starts with its parent's bounds. [`Self::shrink_clip_rect`] shrinks them
+    /// alike, [`Self::set_clip_rect`] sets them to the new clip rect.
+    #[inline]
+    pub fn overflow_bounds(&self) -> Rect {
+        self.overflow_bounds
+    }
+
+    /// Sets [`Self::overflow_bounds`], for a container whose clipping is intended, after it
+    /// sets its clip rect.
+    #[inline]
+    pub fn set_overflow_bounds(&mut self, overflow_bounds: Rect) {
+        self.overflow_bounds = overflow_bounds;
     }
 
     /// Can be used for culling: if `false`, then no part of `rect` will be visible on screen.
@@ -1379,6 +1413,8 @@ impl Ui {
             .advance_after_rects(frame_rect, widget_rect, item_spacing);
 
         register_rect(self, widget_rect);
+        #[cfg(debug_assertions)]
+        paint_if_clipped(self, widget_rect);
 
         widget_rect
     }
@@ -1390,6 +1426,8 @@ impl Ui {
     pub fn allocate_rect(&mut self, rect: Rect, sense: Sense) -> Response {
         let rect = rect.round_ui();
         let id = self.advance_cursor_after_rect(rect);
+        #[cfg(debug_assertions)]
+        paint_if_clipped(self, rect);
         self.interact(rect, id, sense)
     }
 
@@ -3124,6 +3162,55 @@ fn register_rect(ui: &Ui, rect: Rect) {
     }
 }
 
+/// With [`crate::style::DebugOptions::show_clipped`], outlines the widget at `rect` if it reaches
+/// outside [`Ui::overflow_bounds`], marking the edges where it is cut off. Paints on the debug
+/// layer, so the outline shows over the clipped part as well.
+#[cfg(debug_assertions)]
+fn paint_if_clipped(ui: &Ui, rect: Rect) {
+    if !ui.style().debug.show_clipped || !rect.is_positive() || !ui.is_visible() {
+        return;
+    }
+
+    let bounds = ui.overflow_bounds();
+
+    // One physical pixel of slack, for rects and bounds rounded differently.
+    let allowed = bounds.expand(1.0 / ui.pixels_per_point());
+    if allowed.contains_rect(rect) {
+        return;
+    }
+
+    let to_global = ui
+        .layer_transform_to_global(ui.layer_id())
+        .unwrap_or_default();
+    let rect_global = to_global * rect;
+    let bounds_global = to_global * bounds;
+
+    let color = Color32::from_rgb(255, 0, 255);
+    let painter = ui.debug_painter();
+    painter.rect_stroke(rect_global, 0.0, (1.0, color), StrokeKind::Inside);
+
+    let cut = Stroke::new(2.5, color);
+    let (top, bottom) = (rect_global.top(), rect_global.bottom());
+    let (left, right) = (rect_global.left(), rect_global.right());
+
+    if rect.left() < allowed.left() {
+        let x = bounds_global.left();
+        painter.line_segment([pos2(x, top), pos2(x, bottom)], cut);
+    }
+    if allowed.right() < rect.right() {
+        let x = bounds_global.right();
+        painter.line_segment([pos2(x, top), pos2(x, bottom)], cut);
+    }
+    if rect.top() < allowed.top() {
+        let y = bounds_global.top();
+        painter.line_segment([pos2(left, y), pos2(right, y)], cut);
+    }
+    if allowed.bottom() < rect.bottom() {
+        let y = bounds_global.bottom();
+        painter.line_segment([pos2(left, y), pos2(right, y)], cut);
+    }
+}
+
 #[cfg(not(debug_assertions))]
 fn register_rect(_ui: &Ui, _rect: Rect) {}
 
@@ -3133,3 +3220,108 @@ const _: () = {
     const fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Ui>();
 };
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        CentralPanel, Context, FontDefinitions, Id, Panel, RawInput, Rect, ScrollArea, Ui,
+        collapsing_header::CollapsingState,
+    };
+
+    fn run(ctx: &Context, time: f64, add_contents: impl FnMut(&mut Ui)) {
+        let input = RawInput {
+            time: Some(time),
+            ..Default::default()
+        };
+        ctx.run_ui(input, add_contents)
+            .drop_without_applying_deltas();
+    }
+
+    fn context() -> Context {
+        let ctx = Context::default();
+        ctx.set_fonts(FontDefinitions::empty());
+        ctx
+    }
+
+    #[test]
+    fn a_panel_bounds_its_content() {
+        let ctx = context();
+        let mut bounds = None;
+        let mut panel_rect = None;
+
+        run(&ctx, 0.0, |ui| {
+            let response = Panel::left("panel")
+                .exact_size(100.0)
+                .resizable(false)
+                .show(ui, |ui| bounds = Some(ui.overflow_bounds()))
+                .response;
+            panel_rect = Some(response.rect);
+        });
+
+        assert_eq!(bounds.unwrap(), panel_rect.unwrap());
+    }
+
+    #[test]
+    fn a_scroll_area_opens_the_bounds_in_the_directions_it_scrolls() {
+        let ctx = context();
+        let mut outer = None;
+        let mut vertical = None;
+        let mut nested = None;
+
+        run(&ctx, 0.0, |ui| {
+            CentralPanel::default().show(ui, |ui| {
+                outer = Some(ui.overflow_bounds());
+                ScrollArea::vertical().show(ui, |ui| {
+                    vertical = Some(ui.overflow_bounds());
+                    ScrollArea::horizontal().show(ui, |ui| nested = Some(ui.overflow_bounds()));
+                });
+            });
+        });
+
+        let (outer, vertical, nested) = (outer.unwrap(), vertical.unwrap(), nested.unwrap());
+        assert_eq!(vertical.x_range(), outer.x_range());
+        assert!(vertical.y_range().min.is_infinite() && vertical.y_range().max.is_infinite());
+        assert_eq!(nested, Rect::EVERYTHING);
+    }
+
+    #[test]
+    fn an_opening_collapsible_keeps_its_parents_bounds() {
+        let ctx = context();
+        let id = Id::unique("collapsible");
+        let show = |ui: &mut Ui, open: bool, seen: &mut Option<(Rect, Rect, Rect, Rect)>| {
+            let parent = ui.overflow_bounds();
+            let mut state = CollapsingState::load_with_default_open(ui.ctx(), id, false);
+            state.set_open(open);
+            state.show_body_unindented(ui, |ui| {
+                ui.add_space(100.0);
+                *seen = Some((parent, ui.overflow_bounds(), ui.clip_rect(), ui.min_rect()));
+            });
+        };
+
+        let mut seen = None;
+        run(&ctx, 0.0, |ui| show(ui, false, &mut seen));
+        run(&ctx, 0.02, |ui| show(ui, true, &mut seen));
+
+        let (parent, bounds, clip_rect, body) = seen.expect("the body shows while it opens");
+        assert!(
+            clip_rect.bottom() < body.bottom(),
+            "the body is cut off mid-animation"
+        );
+        assert_eq!(bounds, parent);
+    }
+
+    #[test]
+    fn a_scene_opens_the_bounds() {
+        let ctx = context();
+        let mut bounds = None;
+        let mut scene_rect = Rect::from_min_size(crate::Pos2::ZERO, crate::vec2(100.0, 100.0));
+
+        run(&ctx, 0.0, |ui| {
+            crate::Scene::new().show(ui, &mut scene_rect, |ui| {
+                bounds = Some(ui.overflow_bounds());
+            });
+        });
+
+        assert_eq!(bounds.unwrap(), Rect::EVERYTHING);
+    }
+}

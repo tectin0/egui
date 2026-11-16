@@ -228,6 +228,9 @@ impl Scene {
         // clip (for instance, from window collapse) isn't overridden.
         local_ui.set_clip_rect(to_global.inverse() * outer_rect.intersect(parent_ui.clip_rect()));
 
+        // Content panned or zoomed out of view isn't cut off by accident:
+        local_ui.set_overflow_bounds(Rect::EVERYTHING);
+
         // Tell egui to apply the transform on the layer:
         local_ui
             .ctx()

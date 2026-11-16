@@ -1496,6 +1496,14 @@ pub struct DebugOptions {
     /// `Sense::click()` when it should be using `Sense::CLICK`) and you need to find which one it
     /// is.
     pub show_focused_widget: bool,
+
+    /// Outline widgets that are cut off by a clip rect, e.g. a row of checkboxes wider than its
+    /// panel.
+    ///
+    /// Clipping a container does on purpose doesn't count: content scrolled out of a
+    /// [`crate::ScrollArea`], a [`crate::CollapsingHeader`] while it animates, a sliding panel,
+    /// a [`crate::Scene`]. See [`crate::Ui::overflow_bounds`].
+    pub show_clipped: bool,
 }
 
 #[cfg(debug_assertions)]
@@ -1514,6 +1522,7 @@ impl Default for DebugOptions {
             warn_if_rect_changes_id: false,
             show_unaligned: cfg!(debug_assertions),
             show_focused_widget: false,
+            show_clipped: false,
         }
     }
 }
@@ -2757,6 +2766,7 @@ impl DebugOptions {
             warn_if_rect_changes_id,
             show_unaligned,
             show_focused_widget,
+            show_clipped,
         } = self;
 
         {
@@ -2800,6 +2810,8 @@ impl DebugOptions {
             show_focused_widget,
             "Highlight which widget has keyboard focus",
         );
+
+        ui.checkbox(show_clipped, "Show widgets cut off by a clip rect");
 
         ui.vertical_centered(|ui| reset_button(ui, self, "Reset debug options"));
     }

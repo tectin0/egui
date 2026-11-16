@@ -205,12 +205,15 @@ impl CollapsingState {
                 let clipped_child_height = clipped_child_height.at_least(0.0);
 
                 {
+                    // The body is cut off only while it animates, on purpose:
+                    let overflow_bounds = child_ui.overflow_bounds();
                     let mut clip_rect = child_ui.clip_rect();
                     clip_rect.max.y = f32::min(
                         clip_rect.max.y,
                         child_ui.max_rect().top() + clipped_child_height,
                     );
                     child_ui.set_clip_rect(clip_rect);
+                    child_ui.set_overflow_bounds(overflow_bounds);
                 }
 
                 let ret = add_body(child_ui);

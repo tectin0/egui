@@ -907,6 +907,16 @@ impl ScrollArea {
             // Make sure we didn't accidentally expand the clip rect
             content_clip_rect = content_clip_rect.intersect(ui.clip_rect());
             content_ui.set_clip_rect(content_clip_rect);
+
+            // Content scrolled out of view isn't cut off by accident:
+            let mut overflow_bounds = ui.overflow_bounds();
+            for d in 0..2 {
+                if direction_enabled[d] {
+                    overflow_bounds.min[d] = f32::NEG_INFINITY;
+                    overflow_bounds.max[d] = f32::INFINITY;
+                }
+            }
+            content_ui.set_overflow_bounds(overflow_bounds);
         }
 
         let viewport = Rect::from_min_size(Pos2::ZERO + state.offset, inner_size);

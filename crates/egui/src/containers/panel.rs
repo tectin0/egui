@@ -843,6 +843,14 @@ impl Panel {
         // collapse) isn't overridden.
         panel_ui.shrink_clip_rect(visible_outer_rect);
 
+        // The part a slide hides isn't cut off by accident; content beyond the panel is:
+        panel_ui.set_overflow_bounds(
+            parent_ui
+                .overflow_bounds()
+                .intersect(outer_rect)
+                .translate(shifted_outer_rect.min - outer_rect.min),
+        );
+
         let axis = side.axis();
         let panel_axis_min =
             (self.outer_size_range.min - frame.total_margin().sum()[axis]).at_least(0.0);

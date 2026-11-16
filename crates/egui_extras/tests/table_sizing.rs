@@ -179,3 +179,26 @@ fn strip_sizing_respects_clipping_in_both_directions() {
         }
     }
 }
+
+#[test]
+fn a_clipping_column_bounds_its_cells_in_a_scrolled_table() {
+    let ctx = Context::default();
+    let mut cell = None;
+
+    let output = ctx.run_ui(Default::default(), |ui| {
+        egui::ScrollArea::horizontal().show(ui, |ui| {
+            TableBuilder::new(ui)
+                .column(Column::exact(100.0))
+                .body(|mut body| {
+                    body.row(20.0, |mut row| {
+                        row.col(|ui| cell = Some((ui.clip_rect(), ui.overflow_bounds())));
+                    });
+                });
+        });
+    });
+    output.drop_without_applying_deltas();
+
+    let (clip_rect, bounds) = cell.unwrap();
+    assert!(clip_rect.width() <= 100.0, "the cell clips");
+    assert_eq!(bounds.x_range(), clip_rect.x_range());
+}
